@@ -204,10 +204,11 @@ create_gitlab_repo() {
 
     log_info "Creating GitLab repository: $repo_name (visibility: $visibility)"
 
-    # Create repository
+    # Create repository (remote only, no local git init)
     if glab repo create "$repo_name" \
         --"$visibility" \
-        --description "Main GitLab repository with GitHub mirror" 2>&1; then
+        --description "Main GitLab repository with GitHub mirror" \
+        --skipGitInit 2>&1; then
 
         log_success "Created GitLab repository: $repo_name"
     else
@@ -256,9 +257,12 @@ init_local_git() {
 push_to_gitlab() {
     log_info "Pushing to GitLab..."
 
+    local current_branch
+    current_branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "master")
+
     # Push to origin (GitLab)
-    if git push -u origin main 2>&1; then
-        log_success "Pushed to GitLab (origin/main)"
+    if git push -u origin "$current_branch" 2>&1; then
+        log_success "Pushed to GitLab (origin/$current_branch)"
     else
         log_error "Failed to push to GitLab"
         exit 1
