@@ -152,16 +152,12 @@ create_project_folder() {
 
     # Check if folder exists
     if [ -d "$repo_name" ]; then
-        log_warn "Folder '$repo_name' already exists"
-
-        # Check if it has content
-        if [ "$(ls -A "$repo_name" 2>/dev/null)" ]; then
-            log_error "Folder '$repo_name' is not empty"
-            log_info "Please choose a different name or remove the existing folder"
-            exit 1
+        if [ -d "$repo_name/.git" ]; then
+            log_warn "Folder '$repo_name' already exists and is a git repository"
+        else
+            log_warn "Folder '$repo_name' already exists (no .git directory)"
         fi
-
-        log_info "Using existing empty folder: $repo_name"
+        log_info "Using existing folder: $repo_name"
     else
         log_info "Creating project folder: $repo_name"
         mkdir -p "$repo_name"
@@ -233,15 +229,37 @@ init_local_git() {
         git commit --allow-empty -m "Initial commit"
         log_success "Initialized git repository with empty commit"
     else
-        log_info "Git repository already initialized"
+        log_info "Existing git repository detected; not re-initializing"
     fi
 
-    # Add GitLab as origin remote (single source of truth)
-    if ! git remote get-url origin &> /dev/null; then
-        git remote add origin "git@gitlab.com:$GLAB_USER/$repo_name.git"
+    # Ensure GitLab is configured as 'origin' remote
+    local desired_origin="git@gitlab.com:$GLAB_USER/$repo_name.git"
+    local current_origin
+    current_origin=$(git remote get-url origin 2>/dev/null || true)
+
+    if [ -z "$current_origin" ]; then
+        # No origin configured yet; add GitLab as origin
+        git remote add origin "$desired_origin"
         log_success "Added GitLab as 'origin' remote"
+    elif [ "$current_origin" = "$desired_origin" ]; then
+        # Origin already points to the expected GitLab project
+        log_info "Remote 'origin' already points to $current_origin; reusing"
     else
-        log_info "Remote 'origin' already exists"
+        # Origin exists but points somewhere else; ask user before changing
+        log_warn "Remote 'origin' already exists and points to: $current_origin"
+        log_info "Intended GitLab origin is: $desired_origin"
+        printf "Overwrite 'origin' with GitLab remote and continue? [y/N] "
+        read -r answer
+        case "$answer" in
+            [yY][eE][sS]|[yY])
+                git remote set-url origin "$desired_origin"
+                log_success "Updated 'origin' to GitLab: $desired_origin"
+                ;;
+            *)
+                log_error "Aborting: existing 'origin' remote left unchanged"
+                exit 1
+                ;;
+        esac
     fi
 }
 
