@@ -43,7 +43,6 @@ NOTES:
     - Both CLIs must be authenticated before running this script
     - A new folder will be created with the project name
     - GitLab will be configured as 'origin' remote
-    - GitHub will be configured as 'mirror' remote
     - Push mirroring (GitLab → GitHub) will be configured automatically
 
 PREREQUISITES:
@@ -51,15 +50,15 @@ PREREQUISITES:
     brew install glab gh                          # macOS
     sudo apt install glab gh                      # Linux
 
-    # Authenticate with GitHub
+    # Authenticate with GitHub (must grant at least 'repo' scope)
     gh auth login
 
     # Authenticate with GitLab
     glab auth login
 
-ENVIRONMENT VARIABLES:
-    GITLAB_TOKEN    GitLab personal access token (api scope)
-    GITHUB_TOKEN    GitHub personal access token (repo scope)
+NOTES ON AUTHENTICATION:
+    This script reuses the credentials stored by 'gh' and 'glab' on your machine.
+    You do not need to export additional tokens.
 EOF
 }
 
@@ -237,20 +236,12 @@ init_local_git() {
         log_info "Git repository already initialized"
     fi
 
-    # Add GitLab as origin remote
+    # Add GitLab as origin remote (single source of truth)
     if ! git remote get-url origin &> /dev/null; then
         git remote add origin "git@gitlab.com:$GLAB_USER/$repo_name.git"
         log_success "Added GitLab as 'origin' remote"
     else
         log_info "Remote 'origin' already exists"
-    fi
-
-    # Add GitHub as mirror remote
-    if ! git remote get-url mirror &> /dev/null; then
-        git remote add mirror "git@github.com:$GH_USER/$repo_name.git"
-        log_success "Added GitHub as 'mirror' remote"
-    else
-        log_info "Remote 'mirror' already exists"
     fi
 }
 
@@ -272,22 +263,28 @@ push_to_gitlab() {
 configure_push_mirror() {
     log_info "Configuring push mirroring (GitLab → GitHub)..."
 
-    # Get GitLab project path
-    local glab_project_path
-    glab_project_path=$(glab api projects --search "$repo_name" 2>/dev/null | grep -o '"path_with_namespace"[[:space:]]*:[[:space:]]*"[^"]*"' | head -1 | cut -d'"' -f4)
-
-    if [ -z "$glab_project_path" ]; then
-        log_error "Failed to get GitLab project path"
-        exit 1
-    fi
+    # Build GitLab project path directly from username and repo name
+    local glab_project_path="$GLAB_USER/$repo_name"
+    local encoded_project_path
+    encoded_project_path="${glab_project_path//\//%2F}"
 
     log_info "GitLab project path: $glab_project_path"
 
-    # Build GitHub mirror URL with token
-    local github_mirror_url="https://:$GITHUB_TOKEN@github.com/$GH_USER/$repo_name.git"
+    # Get a GitHub token from gh's authenticated context (no separate env var needed)
+    local github_token
+    github_token=$(gh auth token 2>/dev/null || true)
+
+    if [ -z "$github_token" ]; then
+        log_error "Failed to obtain GitHub token from 'gh auth token'"
+        log_info "Ensure you are logged in with: gh auth login --scopes repo"
+        return 1
+    fi
+
+    # Build GitHub mirror URL with explicit username and token
+    local github_mirror_url="https://$GH_USER:$github_token@github.com/$GH_USER/$repo_name.git"
 
     # Configure push mirror via GitLab API
-    if glab api "projects/$glab_project_path/remote_mirrors" \
+    if glab api "projects/$encoded_project_path/remote_mirrors" \
         --method POST \
         --field "url=$github_mirror_url" \
         --field "enabled=true" \
@@ -316,7 +313,6 @@ show_summary() {
     echo ""
     echo "Remotes configured:"
     echo "  origin  → git@gitlab.com:$GLAB_USER/$repo_name.git"
-    echo "  mirror  → git@github.com:$GH_USER/$repo_name.git"
     echo ""
     echo "Mirroring:"
     echo "  Direction: GitLab → GitHub (push mirror)"
