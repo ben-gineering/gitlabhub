@@ -12,7 +12,7 @@
 
 set -e
 
-SCRIPT_VERSION="1.0.0"
+SCRIPT_VERSION="1.1.0"
 
 usage() {
     cat << EOF
@@ -174,6 +174,14 @@ create_github_repo() {
 
     log_info "Creating GitHub repository: $repo_name (visibility: $visibility)"
 
+    # First, check if the repository already exists for this user
+    if gh repo view "$GH_USER/$repo_name" &> /dev/null; then
+        log_warn "Repository '$repo_name' already exists on GitHub"
+        log_info "Using existing repository: $GH_USER/$repo_name"
+        log_info "URL: https://github.com/$GH_USER/$repo_name"
+        return 0
+    fi
+
     # Create repository
     if gh repo create "$repo_name" \
         --"$visibility" \
@@ -182,10 +190,11 @@ create_github_repo() {
         log_success "Created GitHub repository: $repo_name"
         log_info "URL: https://github.com/$GH_USER/$repo_name"
     else
-        # Check if repo already exists
+        # Creation failed; check one more time if repo now exists (race / partial failure)
         if gh repo view "$GH_USER/$repo_name" &> /dev/null; then
-            log_warn "Repository '$repo_name' already exists on GitHub"
-            log_info "Using existing repository"
+            log_warn "Repository '$repo_name' appears to already exist on GitHub"
+            log_info "Using existing repository: $GH_USER/$repo_name"
+            log_info "URL: https://github.com/$GH_USER/$repo_name"
         else
             log_error "Failed to create GitHub repository"
             exit 1
@@ -199,6 +208,18 @@ create_gitlab_repo() {
 
     log_info "Creating GitLab repository: $repo_name (visibility: $visibility)"
 
+    # Compute project path and encoded path
+    local glab_project_path="$GLAB_USER/$repo_name"
+    local encoded_project_path
+    encoded_project_path="${glab_project_path//\//%2F}"
+
+    # First, check if the project already exists
+    if glab api "projects/$encoded_project_path" >/dev/null 2>&1; then
+        log_warn "Repository '$repo_name' already exists on GitLab"
+        log_info "Using existing repository: $glab_project_path"
+        return 0
+    fi
+
     # Create repository (remote only, no local git init)
     if glab repo create "$repo_name" \
         --"$visibility" \
@@ -207,12 +228,10 @@ create_gitlab_repo() {
 
         log_success "Created GitLab repository: $repo_name"
     else
-        # Check if repo already exists
-        local existing_project
-        existing_project=$(glab api projects --search "$repo_name" 2>/dev/null | grep -o '"path_with_namespace"[[:space:]]*:[[:space:]]*"[^"]*"' | head -1 | cut -d'"' -f4)
-        if [ -n "$existing_project" ]; then
-            log_warn "Repository '$repo_name' already exists on GitLab"
-            log_info "Using existing repository"
+        # Creation failed; check again if project now exists (race / partial failure)
+        if glab api "projects/$encoded_project_path" >/dev/null 2>&1; then
+            log_warn "Repository '$repo_name' appears to already exist on GitLab"
+            log_info "Using existing repository: $glab_project_path"
         else
             log_error "Failed to create GitLab repository"
             exit 1
