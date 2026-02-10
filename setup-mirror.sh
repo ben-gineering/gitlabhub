@@ -100,8 +100,8 @@ check_dependencies() {
     fi
 
     log_success "All dependencies installed"
-    log_info "glab version: $(glab version --short)"
-    log_info "gh version: $(gh version --short)"
+    log_info "glab version: $(glab version)"
+    log_info "gh version: $(gh version)"
     log_info "git version: $(git --version | cut -d' ' -f3)"
 }
 
@@ -125,7 +125,7 @@ check_auth() {
 
 get_github_username() {
     log_info "Getting GitHub username..."
-    GH_USER=$(gh api user --jq '.login')
+    GH_USER=$(gh api user 2>/dev/null | grep -o '"login"[[:space:]]*:[[:space:]]*"[^"]*"' | cut -d'"' -f4)
 
     if [ -z "$GH_USER" ]; then
         log_error "Failed to get GitHub username"
@@ -137,7 +137,7 @@ get_github_username() {
 
 get_gitlab_username() {
     log_info "Getting GitLab username..."
-    GLAB_USER=$(glab api user --jq '.username')
+    GLAB_USER=$(glab api user 2>/dev/null | grep -o '"username"[[:space:]]*:[[:space:]]*"[^"]*"' | cut -d'"' -f4)
 
     if [ -z "$GLAB_USER" ]; then
         log_error "Failed to get GitLab username"
@@ -215,7 +215,9 @@ create_gitlab_repo() {
         log_success "Created GitLab repository: $repo_name"
     else
         # Check if repo already exists
-        if glab api projects --search "$repo_name" --jq '.[0].path_with_namespace' &> /dev/null; then
+        local existing_project
+        existing_project=$(glab api projects --search "$repo_name" 2>/dev/null | grep -o '"path_with_namespace"[[:space:]]*:[[:space:]]*"[^"]*"' | head -1 | cut -d'"' -f4)
+        if [ -n "$existing_project" ]; then
             log_warn "Repository '$repo_name' already exists on GitLab"
             log_info "Using existing repository"
         else
@@ -271,7 +273,7 @@ configure_push_mirror() {
 
     # Get GitLab project path
     local glab_project_path
-    glab_project_path=$(glab api projects --search "$repo_name" --jq '.[0].path_with_namespace')
+    glab_project_path=$(glab api projects --search "$repo_name" 2>/dev/null | grep -o '"path_with_namespace"[[:space:]]*:[[:space:]]*"[^"]*"' | head -1 | cut -d'"' -f4)
 
     if [ -z "$glab_project_path" ]; then
         log_error "Failed to get GitLab project path"
