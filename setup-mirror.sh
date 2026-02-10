@@ -182,9 +182,7 @@ create_github_repo() {
     # Create repository
     if gh repo create "$repo_name" \
         --"$visibility" \
-        --description "GitHub mirror of GitLab repository" \
-        --晖行-mode-out \
-        --push 2>&1; then
+        --description "GitHub mirror of GitLab repository" 2>&1; then
 
         log_success "Created GitHub repository: $repo_name"
         log_info "URL: https://github.com/$GH_USER/$repo_name"
@@ -209,8 +207,7 @@ create_gitlab_repo() {
     # Create repository
     if glab repo create "$repo_name" \
         --"$visibility" \
-        --description "Main GitLab repository with GitHub mirror" \
-        --晖行-mode-out 2>&1; then
+        --description "Main GitLab repository with GitHub mirror" 2>&1; then
 
         log_success "Created GitLab repository: $repo_name"
     else
