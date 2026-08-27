@@ -1,0 +1,11 @@
+# Environment variables (contains secrets - do not commit)
+.env
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor files
+*.swp
+*.swo
+*~
