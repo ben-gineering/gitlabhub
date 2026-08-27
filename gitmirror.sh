@@ -32,6 +32,18 @@ set -e
 
 SCRIPT_VERSION="2.0.0"
 
+# Source .env if it exists (looks in script's directory and current directory)
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+for envfile in "${SCRIPT_DIR}/.env" "./.env"; do
+    if [ -f "$envfile" ]; then
+        # shellcheck disable=SC1090
+        set -a
+        source "$envfile"
+        set +a
+        break
+    fi
+done
+
 # Defaults
 FORGEJO_URL="${FORGEJO_URL:-http://10.20.2.3:3000}"
 FORGEJO_TOKEN="${FORGEJO_TOKEN:-}"
